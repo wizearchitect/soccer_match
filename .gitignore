@@ -1,0 +1,35 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+soccer_a/
+.venv/
+venv/
+env/
+
+# ── Secrets — NEVER commit these ─────────────────────────────────────────────
+.env
+# .env.example files ARE committed (they contain no secrets, only templates)
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+
+# ── Testing artefacts ─────────────────────────────────────────────────────────
+.hypothesis/
+.pytest_cache/
+
+# ── IDE / editor ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+.kiro/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Local conversation files (not part of the project) ───────────────────────
+conversation_*.md

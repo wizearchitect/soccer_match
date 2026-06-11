@@ -1,0 +1,61 @@
+# docker-compose.yml — local development and single-VPS deployment
+#
+# Usage:
+#   docker compose up -d          # start in background
+#   docker compose logs -f        # follow logs
+#   docker compose down           # stop and remove containers
+#   docker compose down -v        # stop + wipe volumes
+#
+# Override any env var:
+#   PORT=9000 docker compose up -d
+
+services:
+
+  pitch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime           # use the final runtime stage
+    image: soccer-pitch:latest
+    container_name: soccer-pitch
+
+    restart: unless-stopped     # auto-restart on crash or VPS reboot
+
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"   # host:container — both use $PORT or 8000
+
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "${PORT:-8000}"
+
+    # Mount a named volume so pitch.log persists across container restarts
+    volumes:
+      - pitch-logs:/app/pitch/logs
+
+    # Resource limits — keeps it well within a $6/month VPS (1 vCPU, 1 GB RAM)
+    deploy:
+      resources:
+        limits:
+          cpus: "0.8"
+          memory: "256M"
+        reservations:
+          cpus: "0.1"
+          memory: "64M"
+
+    # Matches the HEALTHCHECK in the Dockerfile
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request, os; port=os.getenv('PORT','8000'); urllib.request.urlopen(f'http://localhost:{port}/api/state', timeout=4)"]
+      interval: 20s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pitch-logs:

@@ -1,0 +1,93 @@
+THE AGENTIC SOCCER SYSTEM — AUDIENCE BREAKDOWN
+================================================
+
+The System in One Sentence
+--------------------------
+An AI agent plays soccer autonomously by continuously observing the game,
+thinking about what to do, and acting — all powered by a large language model.
+
+
+THE THREE MAJOR COMPONENTS
+==========================
+
+1. The Pitch (Game Server)
+--------------------------
+The virtual soccer field. It's a PyGame application running on one PC that:
+- Maintains the game world — ball position, player positions, score
+- Exposes an API so agents can read the state and submit moves
+- Renders everything visually in real-time so spectators can watch
+
+Think of it as the referee + stadium — it enforces the rules and shows the match.
+
+
+2. The Agent (Player Brain)
+---------------------------
+A Python application with a Streamlit dashboard that runs the
+Look -> Think -> Act loop every 1.5 seconds:
+
+  Step      What it does
+  ----      ------------
+  LOOK      Calls the server API to get ball and player positions
+  THINK     Sends the game state + a strategy prompt to an LLM and asks "what should I do?"
+  ACT       Sends the LLM's decision (move direction + kick) back to the server
+
+If anything fails (network timeout, LLM error), the agent BRAKES — it stands
+still instead of doing something unpredictable. Safe by design.
+
+
+3. The LLM (Decision Engine)
+-----------------------------
+An NVIDIA NIM model (llama-3.1-8b-instruct) accessed via API. It receives:
+- A system prompt — your strategy instructions (e.g., "you are a striker,
+  position behind the ball before kicking")
+- Spatial analysis — pre-computed data like distance to ball, whether you're
+  in kick range, direction to goal
+- An optional behavior override — real-time tactical commands you can inject mid-game
+
+It returns a structured decision: dx, dy (movement direction), and kick (boolean).
+
+
+WHAT MAKES IT "AGENTIC"
+========================
+- Autonomous — once started, it runs without human input
+- Perceptive — it observes the environment each cycle
+- Reasoning — it uses an LLM to reason about the best action given the situation
+- Adaptive — you can change its strategy (system prompt) or inject overrides without restarting
+- Safe fallback — it degrades gracefully when things go wrong (brakes instead of crashing)
+
+
+THE SUPPORTING PIECES
+=====================
+- Spatial Analysis (spatial.py) — does the math so the LLM doesn't have to.
+  Computes distances, directions, whether the agent is behind the ball,
+  nearest opponents, and even recommends actions.
+- Config (config.py) — all tunable parameters (timeouts, loop speed, prompt
+  limits) in one place.
+- Streamlit Dashboard (app.py) — the human interface to configure, monitor,
+  and override the agent in real time.
+
+
+THE FLOW
+========
+
+  +-------------+        GET /api/state        +-------------+
+  |             | <--------------------------- |             |
+  |   AGENT     |                               |   PITCH     |
+  |  (Player)   | --------------------------> |  (Server)   |
+  |             |       POST /api/action        |             |
+  +------+------+                               +-------------+
+         |
+         |  "Here's the game state,
+         |   what should I do?"
+         v
+  +-------------+
+  |     LLM     |
+  |  (NVIDIA)   |
+  |             |
+  | Returns:    |
+  | {dx, dy,    |
+  |  kick}      |
+  +-------------+
+
+This is a simple but complete agentic loop — the same pattern used in robotics,
+autonomous vehicles, and AI assistants, just applied to soccer.

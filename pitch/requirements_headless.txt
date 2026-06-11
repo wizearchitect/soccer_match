@@ -1,0 +1,8 @@
+# Headless / cloud deployment requirements for the pitch server.
+# pygame is intentionally excluded — no display needed in headless mode.
+# Use this file instead of requirements.txt when deploying to Railway, Render,
+# Fly.io, or any other cloud platform.
+
+fastapi>=0.100,<1.0
+uvicorn[standard]>=0.23,<1.0
+python-dotenv>=1.0,<2.0

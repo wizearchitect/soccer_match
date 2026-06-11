@@ -1,0 +1,50 @@
+# ── Version control ──────────────────────────────────────────────────────────
+.git
+.gitignore
+.github
+
+# ── Python cache & bytecode ───────────────────────────────────────────────────
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# ── Hypothesis / test artefacts ───────────────────────────────────────────────
+**/.hypothesis
+**/tests
+**/.pytest_cache
+**/pytest.ini
+
+# ── Virtual environments — NEVER bake these in ───────────────────────────────
+**/soccer_a
+**/.venv
+**/venv
+**/env
+
+# ── Logs — start fresh each container ────────────────────────────────────────
+**/*.log
+
+# ── Secrets — NEVER bake .env into the image ────────────────────────────────
+**/.env
+**/.env.*
+!**/.env.example         # keep the example for reference
+
+# ── IDE / editor noise ───────────────────────────────────────────────────────
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db
+
+# ── Docs & deploy scripts (not needed at runtime) ────────────────────────────
+*.md
+conversation_*.md
+MULTI_PC_SETUP.md
+DEPLOY.md
+deploy/
+
+# ── Other top-level config files not needed inside the container ─────────────
+docker-compose.yml
+Procfile
+railway.toml
+render.yaml
+fly.toml

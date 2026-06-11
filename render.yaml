@@ -1,0 +1,19 @@
+# Render.com deployment configuration
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: the-soccer-pitch
+    runtime: python
+    region: oregon
+    plan: free
+
+    buildCommand: pip install -r pitch/requirements_headless.txt
+    startCommand: python -m pitch.main_headless
+
+    healthCheckPath: /api/state
+
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      # PORT is injected automatically by Render — do not set it here

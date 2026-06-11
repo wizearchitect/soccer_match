@@ -1,0 +1,31 @@
+# Fly.io deployment configuration
+# https://fly.io/docs/reference/configuration/
+# Deploy with: fly launch  (first time)  or  fly deploy  (updates)
+
+app = "the-soccer-pitch"
+primary_region = "iad"          # Washington DC — change to nearest region
+
+[build]
+  # Fly will auto-detect Python and use the Dockerfile if present,
+  # otherwise falls back to buildpacks
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8080"                 # Fly uses 8080 internally, maps to 443 externally
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true     # scale to zero when idle (saves cost)
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 100
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
