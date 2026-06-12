@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 from pitch import api
 from pitch import scoreboard
 from pitch.config import Config
+from pitch.cpu_players import CpuPlayers
 from pitch.logging_config import log_startup, setup_logging
 from pitch.physics import PhysicsEngine
 from pitch.state import StateManager
@@ -87,6 +88,25 @@ def main() -> None:
     api.state_manager = state_manager
     scoreboard.state_manager = state_manager
 
+    # Pre-spawn all 8 players at their default positions so the pitch
+    # is populated immediately without needing agents to connect first.
+    _POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Striker"]
+    state_manager.acquire()
+    try:
+        for team in ("Red", "Blue"):
+            for position in _POSITIONS:
+                state_manager.apply_action(
+                    team=team,
+                    position=position,
+                    vector={"dx": 0.0, "dy": 0.0},
+                    kick=False,
+                    agent_name=f"CPU {position[:3]}",
+                )
+    finally:
+        state_manager.release()
+    logger.info("Pre-spawned 8 players on the pitch.")
+    print("  Players   : 8 pre-spawned (4 Red + 4 Blue)")
+
     # Physics engine (daemon thread — dies when main thread exits)
     physics_engine = PhysicsEngine(state_manager=state_manager, on_goal=None)
     physics_thread = threading.Thread(
@@ -96,6 +116,11 @@ def main() -> None:
     )
     physics_thread.start()
     logger.info("PhysicsEngine thread started.")
+
+    # CPU players — drive all 8 players with simple rule-based AI
+    cpu = CpuPlayers(state_manager)
+    cpu.start()
+    logger.info("CpuPlayers thread started.")
 
     # Graceful shutdown on SIGTERM (sent by cloud platforms on deploy / scale-down)
     def _handle_sigterm(signum, frame):
@@ -120,6 +145,7 @@ def main() -> None:
         print("\nKeyboardInterrupt. Shutting down.")
     finally:
         physics_engine.stop()
+        cpu.stop()
         logger.info("The Pitch (headless) shutting down.")
         print("Goodbye!")
 

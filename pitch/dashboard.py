@@ -1,8 +1,7 @@
 """Dashboard module for The Pitch.
 
-Serves the main control panel at / — a dark-themed, FIFA World Cup 2026
-branded page with match controls, Tactical Coach AI, per-player role cards,
-strategy library, leaderboard, and a live debug console.
+Serves the unified control panel + live pitch at /.
+Layout: sidebar (controls) | pitch canvas + coach panel stacked.
 """
 
 from fastapi import APIRouter
@@ -13,1091 +12,931 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 async def dashboard() -> HTMLResponse:
-    """Serve the main control panel dashboard."""
+    """Serve the unified dashboard with embedded live pitch."""
+    return HTMLResponse(content=DASHBOARD_HTML)
+
+
+@router.get("/pitch", response_class=HTMLResponse)
+async def pitch_fullscreen() -> HTMLResponse:
+    """Full-screen pitch view (standalone)."""
     return HTMLResponse(content=DASHBOARD_HTML)
 
 
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Football Soccer – LLM Driven</title>
   <style>
-    /* ── Reset & base ─────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:       #0d0d0d;
-      --surface:  #141414;
-      --surface2: #1a1a1a;
-      --border:   #2a2a2a;
-      --cyan:     #00e5cc;
-      --cyan-dim: #00b8a0;
-      --green:    #22c55e;
-      --purple:   #9333ea;
+      --bg:        #0d0d0d;
+      --surface:   #141414;
+      --surface2:  #1a1a1a;
+      --border:    #2a2a2a;
+      --cyan:      #00e5cc;
+      --cyan-dim:  #00b8a0;
+      --green:     #22c55e;
+      --purple:    #9333ea;
       --purple-dim:#7c3aed;
-      --red:      #be123c;
-      --red-dim:  #9f1239;
-      --orange:   #f97316;
-      --yellow:   #eab308;
-      --text:     #e5e5e5;
-      --text-dim: #737373;
+      --red-clr:   #be123c;
+      --red-dim:   #9f1239;
+      --orange:    #f97316;
+      --yellow:    #eab308;
+      --text:      #e5e5e5;
+      --text-dim:  #737373;
       --text-muted:#404040;
-      --radius:   6px;
+      --radius:    6px;
     }
-    html { font-size: 14px; }
+    html, body { height: 100%; font-size: 16px; }
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      min-height: 100vh;
-      display: grid;
-      grid-template-rows: auto 1fr;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
 
-    /* ── Scrollbar ────────────────────────────────────────────────── */
-    ::-webkit-scrollbar { width: 6px; }
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-    /* ── Header ───────────────────────────────────────────────────── */
+    /* ══════════════════════════════════════════════════════════════
+       HEADER
+    ══════════════════════════════════════════════════════════════ */
     header {
+      flex-shrink: 0;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 12px 20px;
+      padding: 8px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
+      gap: 12px;
     }
-    .header-left { display: flex; flex-direction: column; gap: 2px; }
-    .header-status { display: flex; align-items: center; gap: 8px; }
+    .hdr-left { display: flex; flex-direction: column; gap: 1px; }
+    .hdr-status { display: flex; align-items: center; gap: 7px; }
     .status-dot {
-      width: 9px; height: 9px; border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 6px var(--green);
-      flex-shrink: 0;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 6px var(--green);
     }
-    .header-title {
-      font-size: 1.35rem;
-      font-weight: 700;
-      color: var(--cyan);
-      letter-spacing: -0.3px;
+    .hdr-title  { font-size: 1.1rem; font-weight: 700; color: var(--cyan); }
+    .hdr-sub    { font-size: 0.62rem; color: var(--text-dim); letter-spacing: 1.2px; text-transform: uppercase; }
+    .hdr-right  { display: flex; align-items: center; gap: 8px; }
+    .hdr-link {
+      font-size: 0.7rem; color: var(--text-dim); text-decoration: none;
+      padding: 3px 8px; border: 1px solid var(--border); border-radius: var(--radius);
+      transition: color .15s, border-color .15s;
     }
-    .header-sub {
-      font-size: 0.72rem;
-      color: var(--text-dim);
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
+    .hdr-link:hover { color: var(--cyan); border-color: var(--cyan-dim); }
+    .lang-sel {
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); padding: 4px 8px; border-radius: var(--radius);
+      font-size: 0.75rem; cursor: pointer; outline: none;
     }
-    .lang-select {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 5px 10px;
-      border-radius: var(--radius);
-      font-size: 0.82rem;
-      cursor: pointer;
-      outline: none;
-    }
-    .lang-select:focus { border-color: var(--cyan-dim); }
 
-    /* ── Layout ───────────────────────────────────────────────────── */
+    /* ══════════════════════════════════════════════════════════════
+       BODY LAYOUT  —  sidebar | main
+    ══════════════════════════════════════════════════════════════ */
     .layout {
+      flex: 1;
       display: grid;
-      grid-template-columns: 340px 1fr;
-      height: calc(100vh - 57px);
+      grid-template-columns: 294px 416px 1fr;
       overflow: hidden;
     }
+
+    /* ── Sidebar ── */
     .sidebar {
       border-right: 1px solid var(--border);
       overflow-y: auto;
-      padding: 14px 14px 40px;
+      padding: 10px 10px 30px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
-    }
-    .main-panel {
-      overflow-y: auto;
-      padding: 14px 18px 40px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+      gap: 8px;
     }
 
-    /* ── Cards / Sections ─────────────────────────────────────────── */
+    /* ── Right coach panel ── */
+    .coach-panel {
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 10px 10px 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ── Main panel ── */
+    .main {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       SCORE BAR  (inside main, above pitch)
+    ══════════════════════════════════════════════════════════════ */
+    .score-bar {
+      flex-shrink: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 6px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 8px;
+    }
+    .sb-team      { font-size: 0.72rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+    .sb-team.red  { color: #f87171; }
+    .sb-team.blue { color: #60a5fa; text-align: right; }
+    .sb-centre    { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .sb-score     { font-size: 1.5rem; font-weight: 900; letter-spacing: -1px; }
+    .sb-pill {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      padding: 2px 7px; border-radius: 20px; border: 1px solid var(--border);
+    }
+    .sb-pill.playing { border-color: var(--green); color: var(--green); }
+    .sb-pill.waiting { border-color: var(--yellow); color: var(--yellow); }
+    .sb-timer { font-size: 0.65rem; color: var(--text-dim); }
+
+    /* ══════════════════════════════════════════════════════════════
+       PITCH CANVAS
+    ══════════════════════════════════════════════════════════════ */
+    .pitch-wrap {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+      background: #0a0a0a;
+    }
+    canvas {
+      display: block;
+      max-width: 728px;
+      width: 100%;
+      height: auto;
+      border: 2px solid #2a2a2a;
+      border-radius: 5px;
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       COACH STRIP  (below pitch)
+    ══════════════════════════════════════════════════════════════ */
+    .coach-strip {
+      flex-shrink: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--purple);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .coach-strip-label {
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 1px;
+      text-transform: uppercase; color: var(--purple); white-space: nowrap;
+    }
+    .coach-strip input {
+      flex: 1;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      padding: 5px 9px; font-size: 0.78rem; outline: none;
+      transition: border-color .2s;
+    }
+    .coach-strip input:focus { border-color: var(--purple-dim); }
+    .btn-gen {
+      background: var(--purple); border: 1px solid var(--purple-dim);
+      color: #fff; padding: 5px 12px; border-radius: var(--radius);
+      font-size: 0.72rem; font-weight: 700; letter-spacing: .5px;
+      text-transform: uppercase; cursor: pointer; white-space: nowrap;
+      transition: opacity .15s;
+    }
+    .btn-gen:active { opacity: .75; }
+
+    /* ══════════════════════════════════════════════════════════════
+       SHARED COMPONENTS
+    ══════════════════════════════════════════════════════════════ */
+    /* Card */
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       overflow: hidden;
     }
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px;
-      cursor: pointer;
-      user-select: none;
+    .card-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 11px; cursor: pointer; user-select: none;
       border-bottom: 1px solid var(--border);
     }
-    .card-header:hover { background: var(--surface2); }
+    .card-hdr:hover { background: var(--surface2); }
     .card-title {
-      font-size: 0.82rem;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      font-size: 0.72rem; font-weight: 600; letter-spacing: .5px;
+      text-transform: uppercase; display: flex; align-items: center; gap: 5px;
     }
-    .chevron {
-      color: var(--text-dim);
-      transition: transform 0.2s;
-      font-size: 0.9rem;
-    }
+    .chevron { color: var(--text-dim); transition: transform .2s; font-size: .8rem; }
     .chevron.open { transform: rotate(180deg); }
-    .card-body { padding: 12px 14px; }
+    .card-body { padding: 10px 11px; }
     .card-body.hidden { display: none; }
 
-    /* ── Buttons ──────────────────────────────────────────────────── */
+    /* Buttons */
     .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border-radius: var(--radius);
-      font-size: 0.78rem;
-      font-weight: 600;
-      letter-spacing: 0.6px;
-      text-transform: uppercase;
-      cursor: pointer;
-      border: 1px solid transparent;
-      transition: opacity 0.15s, background 0.15s;
-      white-space: nowrap;
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 5px; padding: 6px 11px; border-radius: var(--radius);
+      font-size: 0.72rem; font-weight: 600; letter-spacing: .5px;
+      text-transform: uppercase; cursor: pointer; border: 1px solid transparent;
+      transition: opacity .15s, background .15s; white-space: nowrap;
     }
-    .btn:active { opacity: 0.8; }
-    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-dark    { background: #1f1f1f; border-color: #333; color: var(--text); }
-    .btn-dark:hover:not(:disabled) { background: #282828; }
-    .btn-red     { background: var(--red); border-color: var(--red-dim); color: #fff; }
-    .btn-red:hover:not(:disabled) { background: var(--red-dim); }
-    .btn-purple  { background: var(--purple); border-color: var(--purple-dim); color: #fff; }
-    .btn-purple:hover:not(:disabled) { background: var(--purple-dim); }
-    .btn-green   { background: #15803d; border-color: #166534; color: #fff; }
-    .btn-green:hover:not(:disabled) { background: #166534; }
-    .btn-full    { width: 100%; }
-    .btn-row     { display: flex; gap: 8px; }
+    .btn:active { opacity: .8; }
+    .btn-dark  { background: #1f1f1f; border-color: #333; color: var(--text); }
+    .btn-dark:hover  { background: #282828; }
+    .btn-red   { background: var(--red-clr); border-color: var(--red-dim); color: #fff; }
+    .btn-red:hover   { background: var(--red-dim); }
+    .btn-row   { display: flex; gap: 6px; }
     .btn-row .btn { flex: 1; }
 
-    /* ── Match Setup ──────────────────────────────────────────────── */
-    .match-live-bar {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 14px;
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 4px;
+    /* Score live bar in sidebar */
+    .live-bar {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 10px;
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      align-items: center; gap: 6px;
     }
-    .score-team { font-size: 0.75rem; color: var(--text-dim); letter-spacing: 0.5px; }
-    .score-team.red  { color: #f87171; }
-    .score-team.blue { color: #60a5fa; text-align: right; }
-    .score-val { font-size: 1.6rem; font-weight: 800; color: var(--text); text-align: center; }
-    .match-status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      padding: 3px 8px;
-      border-radius: 20px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-    }
-    .match-status-pill.playing { border-color: var(--green); color: var(--green); }
-    .match-status-pill.waiting { border-color: var(--yellow); color: var(--yellow); }
-    .timer-bar { text-align: center; font-size: 0.72rem; color: var(--text-dim); margin-top: 4px; }
+    .lb-team       { font-size: 0.68rem; font-weight: 700; color: var(--text-dim); }
+    .lb-team.red   { color: #f87171; }
+    .lb-team.blue  { color: #60a5fa; text-align: right; }
+    .lb-score      { font-size: 1.3rem; font-weight: 900; text-align: center; }
+    .lb-pill       { text-align: center; font-size: 0.6rem; color: var(--text-dim); }
 
-    /* ── Team Tabs ────────────────────────────────────────────────── */
-    .tabs {
-      display: flex;
-      gap: 0;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 12px;
-    }
-    .tab-btn {
-      padding: 8px 14px;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--text-dim);
-      font-size: 0.82rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      transition: color 0.15s;
-    }
-    .tab-btn:hover { color: var(--text); }
-    .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
-    .team-badge {
-      font-size: 0.65rem;
-      font-weight: 700;
-      padding: 2px 5px;
-      border-radius: 3px;
-      text-transform: uppercase;
-    }
-    .badge-ch { background: #0e4a4a; color: var(--cyan); }
-    .badge-de { background: #4a2900; color: var(--orange); }
-
-    /* ── Coach AI Card ────────────────────────────────────────────── */
-    .coach-card {
-      background: var(--surface);
-      border: 1px solid var(--purple);
-      border-radius: var(--radius);
-      padding: 14px;
-      margin-bottom: 10px;
-    }
-    .coach-card-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .coach-card-title {
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--purple);
-    }
-    .sparkle { font-size: 1rem; }
-    .coach-desc {
-      font-size: 0.75rem;
-      color: var(--text-dim);
-      margin-bottom: 10px;
-      line-height: 1.4;
-    }
-    .coach-input {
-      width: 100%;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      padding: 8px 10px;
-      font-size: 0.8rem;
-      resize: none;
-      height: 64px;
-      font-family: inherit;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    .coach-input:focus { border-color: var(--purple-dim); }
-    .coach-footer { display: flex; justify-content: flex-end; margin-top: 8px; }
-
-    /* ── Player Role Cards ────────────────────────────────────────── */
+    /* Role cards */
     .role-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      margin-bottom: 6px;
-      overflow: hidden;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 5px; overflow: hidden;
     }
-    .role-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 9px 12px;
-      cursor: pointer;
-      user-select: none;
+    .role-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 7px 10px; cursor: pointer; user-select: none;
     }
-    .role-card-header:hover { background: var(--surface2); }
-    .role-left { display: flex; align-items: center; gap: 8px; }
-    .role-title {
-      font-size: 0.77rem;
-      font-weight: 700;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-    }
+    .role-hdr:hover { background: var(--surface2); }
+    .role-left { display: flex; align-items: center; gap: 6px; }
+    .role-title { font-size: 0.7rem; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; }
+    .badge { font-size: 0.58rem; font-weight: 700; padding: 1px 4px; border-radius: 3px; }
+    .badge-r { background: #3a0a0a; color: #f87171; }
+    .badge-b { background: #0a1a3a; color: #60a5fa; }
     .status-badge {
-      font-size: 0.62rem;
-      font-weight: 700;
-      padding: 2px 7px;
-      border-radius: 20px;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
+      font-size: 0.58rem; font-weight: 700; padding: 2px 6px;
+      border-radius: 20px; letter-spacing: .5px; text-transform: uppercase;
     }
-    .status-active   { background: #052e16; color: var(--green); border: 1px solid #166534; }
-    .status-inactive { background: #1c1c1c; color: var(--text-dim); border: 1px solid var(--border); }
-    .role-card-body { padding: 10px 12px 12px; border-top: 1px solid var(--border); }
-
-    /* ── Style Tags ───────────────────────────────────────────────── */
-    .style-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+    .s-active   { background: #052e16; color: var(--green); border: 1px solid #166534; }
+    .s-inactive { background: #1c1c1c; color: var(--text-dim); border: 1px solid var(--border); }
+    .role-body  { padding: 8px 10px 10px; border-top: 1px solid var(--border); }
+    .style-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
     .style-tag {
-      font-size: 0.7rem;
-      padding: 3px 8px;
-      border-radius: 20px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text-dim);
-      cursor: pointer;
-      transition: border-color 0.15s, color 0.15s, background 0.15s;
-      user-select: none;
+      font-size: 0.65rem; padding: 2px 6px; border-radius: 20px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text-dim); cursor: pointer; user-select: none;
+      transition: border-color .15s, color .15s;
     }
-    .style-tag:hover { border-color: #444; color: var(--text); }
-    .style-tag.selected { border-color: var(--cyan-dim); color: var(--cyan); background: #0e2e2a; }
-
-    /* ── Prompt Area ──────────────────────────────────────────────── */
+    .style-tag.sel { border-color: var(--cyan-dim); color: var(--cyan); background: #0e2e2a; }
     .prompt-area {
-      width: 100%;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      padding: 8px 10px;
-      font-size: 0.78rem;
-      resize: vertical;
-      min-height: 60px;
-      font-family: inherit;
-      outline: none;
-      line-height: 1.5;
-      transition: border-color 0.2s;
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); padding: 6px 8px;
+      font-size: 0.72rem; resize: vertical; min-height: 52px;
+      font-family: inherit; outline: none; line-height: 1.45;
+      transition: border-color .2s;
     }
     .prompt-area:focus { border-color: var(--cyan-dim); }
 
-    /* ── Collapsible extra sections ───────────────────────────────── */
+    /* Misc */
     .section-count {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      background: var(--surface2);
-      padding: 1px 6px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
+      font-size: 0.62rem; color: var(--text-muted);
+      background: var(--surface2); padding: 1px 5px;
+      border-radius: 10px; border: 1px solid var(--border);
     }
-
-    /* ── Debug Console ────────────────────────────────────────────── */
-    .debug-label {
-      font-size: 0.72rem;
-      color: var(--text-dim);
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      margin-bottom: 6px;
+    .debug-con {
+      background: #0a0a0a; border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 10px; font-family: monospace; font-size: 0.68rem;
+      color: #a3e635; min-height: 80px; max-height: 180px;
+      overflow-y: auto; white-space: pre-wrap; word-break: break-all;
     }
-    .debug-console {
-      background: #0a0a0a;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 12px;
-      font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 0.73rem;
-      color: #a3e635;
-      min-height: 120px;
-      max-height: 260px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-
-    /* ── Live scoreboard strip ────────────────────────────────────── */
-    .scoreboard-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 0.72rem;
-      color: var(--text-dim);
-      text-decoration: none;
-      padding: 4px 8px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      transition: color 0.15s, border-color 0.15s;
-    }
-    .scoreboard-link:hover { color: var(--cyan); border-color: var(--cyan-dim); }
-
-    /* ── Toast notification ───────────────────────────────────────── */
-    #toast {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 10px 16px;
-      font-size: 0.82rem;
-      color: var(--text);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-      opacity: 0;
-      transform: translateY(8px);
-      transition: opacity 0.25s, transform 0.25s;
-      pointer-events: none;
-      z-index: 9999;
-      max-width: 280px;
-    }
-    #toast.show { opacity: 1; transform: translateY(0); }
-    #toast.success { border-color: var(--green); }
-    #toast.error   { border-color: var(--red); }
-
-    /* ── Input / label ────────────────────────────────────────────── */
-    label {
-      font-size: 0.72rem;
-      color: var(--text-dim);
-      display: block;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    input[type=text] {
-      width: 100%;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      padding: 7px 10px;
-      font-size: 0.8rem;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    input[type=text]:focus { border-color: var(--cyan-dim); }
-
-    /* ── Divider ──────────────────────────────────────────────────── */
-    hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
-
-    /* ── Scrollable strategy list ─────────────────────────────────── */
     .strategy-item {
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 0.78rem;
-      color: var(--text-dim);
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+      font-size: 0.72rem; color: var(--text-dim);
     }
     .strategy-item:last-child { border-bottom: none; }
+    label { font-size: 0.65rem; color: var(--text-dim); display: block; margin-bottom: 3px;
+            text-transform: uppercase; letter-spacing: .5px; }
+    input[type=text] {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); padding: 5px 8px;
+      font-size: 0.75rem; outline: none; transition: border-color .2s;
+    }
+    input[type=text]:focus { border-color: var(--cyan-dim); }
+    hr { border: none; border-top: 1px solid var(--border); margin: 6px 0; }
+
+    /* Toast */
+    #toast {
+      position: fixed; bottom: 16px; right: 16px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 14px;
+      font-size: 0.78rem; color: var(--text);
+      box-shadow: 0 4px 16px rgba(0,0,0,.5);
+      opacity: 0; transform: translateY(6px);
+      transition: opacity .25s, transform .25s;
+      pointer-events: none; z-index: 9999;
+    }
+    #toast.show { opacity: 1; transform: translateY(0); }
+    #toast.ok  { border-color: var(--green); }
+    #toast.err { border-color: var(--red-clr); }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+    .tab-btn {
+      padding: 6px 11px; background: none; border: none;
+      border-bottom: 2px solid transparent; color: var(--text-dim);
+      font-size: 0.75rem; font-weight: 600; cursor: pointer;
+      display: flex; align-items: center; gap: 5px; transition: color .15s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
   </style>
 </head>
 <body>
 
-<!-- ── Header ───────────────────────────────────────────────────────── -->
+<!-- ══════════════════ HEADER ══════════════════ -->
 <header>
-  <div class="header-left">
-    <div class="header-status">
-      <span class="status-dot" id="server-dot"></span>
-      <span class="header-title">Football Soccer – LLM Driven</span>
+  <div class="hdr-left">
+    <div class="hdr-status">
+      <span class="status-dot" id="srv-dot"></span>
+      <span class="hdr-title">Football Soccer – LLM Driven</span>
     </div>
-    <div class="header-sub">vs FIFA WORLD CUP 2026 &middot; USA &middot; CANADA &middot; MEXICO</div>
+    <div class="hdr-sub">vs FIFA WORLD CUP 2026 · USA · CANADA · MEXICO</div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;">
-    <a href="/scoreboard" class="scoreboard-link" target="_blank">&#128200; Scoreboard</a>
-    <select class="lang-select" id="lang-select" onchange="setLanguage(this.value)">
+  <div class="hdr-right">
+    <a class="hdr-link" href="/scoreboard" target="_blank">📊 Scoreboard</a>
+    <select class="lang-sel" onchange="setLang(this.value)">
       <option value="en">🌐 English</option>
       <option value="es">🌐 Español</option>
       <option value="fr">🌐 Français</option>
       <option value="pt">🌐 Português</option>
-      <option value="de">🌐 Deutsch</option>
       <option value="ar">🌐 العربية</option>
       <option value="zh">🌐 中文</option>
-      <option value="ja">🌐 日本語</option>
     </select>
   </div>
 </header>
 
-<!-- ── Main layout ───────────────────────────────────────────────────── -->
+<!-- ══════════════════ LAYOUT ══════════════════ -->
 <div class="layout">
 
-  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <!-- ════════ SIDEBAR ════════ -->
   <aside class="sidebar">
 
-    <!-- Match Live Bar -->
-    <div class="match-live-bar">
+    <!-- Live score mini-bar -->
+    <div class="live-bar">
+      <div class="lb-team red">RED</div>
       <div>
-        <div class="score-team red" data-i18n="team_red">RED</div>
+        <div class="lb-score" id="sb-score">0 – 0</div>
+        <div class="lb-pill" id="sb-pill">⏳ WAITING</div>
       </div>
-      <div style="text-align:center;">
-        <div class="score-val" id="score-val">0 – 0</div>
-        <div id="match-pill" class="match-status-pill waiting">
-          <span id="pill-dot">⏳</span>
-          <span id="pill-text" data-i18n="waiting">WAITING</span>
-        </div>
-      </div>
-      <div style="text-align:right;">
-        <div class="score-team blue" data-i18n="team_blue">BLUE</div>
-      </div>
+      <div class="lb-team blue">BLUE</div>
     </div>
-    <div class="timer-bar">⏱ <span id="timer-val">90.0</span>s <span data-i18n="remaining">remaining</span></div>
+    <div style="text-align:center;font-size:0.62rem;color:var(--text-dim);">
+      ⏱ <span id="sb-timer">90.0</span>s remaining
+    </div>
 
     <!-- Match Setup -->
     <div class="card">
-      <div class="card-header" onclick="toggleCard('match-setup')">
-        <span class="card-title">🏆 <span data-i18n="match_setup">Match Setup</span></span>
-        <span class="chevron open" id="chevron-match-setup">▼</span>
+      <div class="card-hdr" onclick="toggleCard('match')">
+        <span class="card-title">🏆 Match Setup</span>
+        <span class="chevron open" id="ch-match">▼</span>
       </div>
-      <div class="card-body" id="body-match-setup">
-        <div class="btn-row" style="margin-bottom:8px;">
-          <button class="btn btn-dark" id="btn-start" onclick="matchControl('start')">
-            ▶ <span data-i18n="start_match">START MATCH</span>
-          </button>
-          <button class="btn btn-red" id="btn-end" onclick="matchControl('end')">
-            🏁 <span data-i18n="end_match">END MATCH</span>
-          </button>
+      <div class="card-body" id="bd-match">
+        <div class="btn-row" style="margin-bottom:6px;">
+          <button class="btn btn-dark" onclick="ctrl('start')">▶ Start</button>
+          <button class="btn btn-red"  onclick="ctrl('end')">🏁 End</button>
         </div>
         <div class="btn-row">
-          <button class="btn btn-dark" onclick="matchControl('reset-ball')">
-            ⚽ <span data-i18n="reset_ball">RESET BALL</span>
-          </button>
-          <button class="btn btn-red" onclick="matchControl('reset-match')">
-            ⏮ <span data-i18n="reset_match">RESET MATCH</span>
-          </button>
+          <button class="btn btn-dark" onclick="ctrl('reset-ball')">⚽ Reset Ball</button>
+          <button class="btn btn-red"  onclick="ctrl('reset-match')">⏮ Reset Match</button>
         </div>
       </div>
     </div>
 
     <!-- Strategy Library -->
     <div class="card">
-      <div class="card-header" onclick="toggleCard('strategy-lib')">
-        <span class="card-title">📚 <span data-i18n="strategy_library">Strategy Library</span>
-          <span class="section-count" id="strategy-count">0</span>
-        </span>
-        <span class="chevron" id="chevron-strategy-lib">▼</span>
+      <div class="card-hdr" onclick="toggleCard('strat')">
+        <span class="card-title">📚 Strategy Library <span class="section-count" id="strat-count">0</span></span>
+        <span class="chevron" id="ch-strat">▼</span>
       </div>
-      <div class="card-body hidden" id="body-strategy-lib">
-        <div id="strategy-list">
-          <div class="strategy-item" style="color:var(--text-muted);font-style:italic;" data-i18n="no_strategies">No saved strategies yet.</div>
-        </div>
+      <div class="card-body hidden" id="bd-strat">
+        <div id="strat-list"><div class="strategy-item" style="color:var(--text-muted);font-style:italic;">No saved strategies.</div></div>
         <hr>
-        <div style="margin-top:8px;">
-          <label data-i18n="save_strategy_label">Save current prompts as strategy</label>
-          <div style="display:flex;gap:6px;margin-top:4px;">
-            <input type="text" id="strategy-name-input" placeholder="Strategy name…" style="flex:1;" />
-            <button class="btn btn-dark" onclick="saveStrategy()" data-i18n="save">Save</button>
-          </div>
+        <label>Save current as strategy</label>
+        <div style="display:flex;gap:5px;margin-top:3px;">
+          <input type="text" id="strat-name" placeholder="Name…" style="flex:1;"/>
+          <button class="btn btn-dark" onclick="saveStrat()" style="padding:5px 9px;">Save</button>
         </div>
-      </div>
-    </div>
-
-    <!-- Tournament Leaderboard -->
-    <div class="card">
-      <div class="card-header" onclick="toggleCard('leaderboard')">
-        <span class="card-title">🏆 <span data-i18n="tournament_leaderboard">Tournament Leaderboard</span>
-          <span class="section-count" id="lb-count">0</span>
-        </span>
-        <span class="chevron" id="chevron-leaderboard">▼</span>
-      </div>
-      <div class="card-body hidden" id="body-leaderboard">
-        <div id="leaderboard-list">
-          <div class="strategy-item" style="color:var(--text-muted);font-style:italic;" data-i18n="no_matches">No matches recorded.</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Live Synced Strategies -->
-    <div class="card">
-      <div class="card-header" onclick="toggleCard('live-sync')">
-        <span class="card-title">📡 <span data-i18n="live_synced">Live Synced Strategies</span>
-          <span class="section-count">0</span>
-        </span>
-        <span class="chevron" id="chevron-live-sync">▼</span>
-      </div>
-      <div class="card-body hidden" id="body-live-sync">
-        <div class="strategy-item" style="color:var(--text-muted);font-style:italic;" data-i18n="no_synced">No synced strategies available.</div>
       </div>
     </div>
 
     <!-- Debug Console -->
     <div>
-      <div class="debug-label" data-i18n="debug_console">Debug Console</div>
-      <div class="debug-console" id="debug-console">{}</div>
+      <div style="font-size:0.62rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;">Debug Console</div>
+      <div class="debug-con" id="debug-con">{}</div>
     </div>
 
   </aside>
 
-  <!-- ── Main Panel ────────────────────────────────────────────────── -->
-  <main class="main-panel">
+  <!-- ════════ COACH PANEL (centre column) ════════ -->
+  <aside class="coach-panel">
 
-    <!-- Coach your team label -->
-    <div>
-      <div style="font-size:1rem;font-weight:700;margin-bottom:2px;" data-i18n="coach_team">Coach your team</div>
-      <div style="font-size:0.75rem;color:var(--text-dim);" data-i18n="coach_sub">Four roles per side. Empty prompt = player inactive.</div>
+    <div style="font-size:0.8rem;font-weight:700;color:var(--cyan);letter-spacing:0.5px;padding:4px 2px 6px;">
+      👥 Coach Your Team
     </div>
 
-    <!-- Team Tabs -->
-    <div class="tabs" id="team-tabs">
-      <button class="tab-btn active" id="tab-red" onclick="switchTeam('Red')">
-        <span class="team-badge badge-ch">RED</span>
-        <span id="tab-red-name" data-i18n="team_red_label">Red Team</span>
+    <!-- Team tabs + role cards -->
+    <div class="tabs">
+      <button class="tab-btn" id="tab-r" onclick="switchTeam('Red')">
+        <span class="badge badge-r">RED</span>
       </button>
-      <button class="tab-btn" id="tab-blue" onclick="switchTeam('Blue')">
-        <span class="team-badge badge-de">BLUE</span>
-        <span id="tab-blue-name" data-i18n="team_blue_label">Blue Team</span>
+      <button class="tab-btn" id="tab-b" onclick="switchTeam('Blue')">
+        <span class="badge badge-b">BLUE</span>
       </button>
     </div>
+    <div id="role-cards"></div>
 
-    <!-- Tactical Coach AI -->
-    <div class="coach-card" id="coach-card">
-      <div class="coach-card-header">
-        <span class="sparkle">✨</span>
-        <span class="coach-card-title" data-i18n="tactical_coach_ai">TACTICAL COACH AI</span>
+  </aside>
+
+  <!-- ════════ MAIN PANEL (right column) ════════ -->
+  <div class="main">
+
+    <!-- Score bar above pitch -->
+    <div class="score-bar">
+      <div class="sb-team red">🔴 Red Team</div>
+      <div class="sb-centre">
+        <div class="sb-score" id="main-score">0 – 0</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="sb-timer">⏱ <span id="main-timer">90.0</span>s</span>
+          <span class="sb-pill waiting" id="main-pill">⏳ WAITING</span>
+        </div>
       </div>
-      <div class="coach-desc" data-i18n="coach_ai_desc">Tell the coach what you want — it writes a full game plan for your team.</div>
-      <textarea class="coach-input" id="coach-prompt-input" data-i18n-placeholder="coach_placeholder"
-        placeholder="e.g. tiki-taka, park the bus, gegenpressing, total football..."></textarea>
-      <div class="coach-footer">
-        <button class="btn btn-purple" onclick="generateCoachPlan()">
-          ✦ <span data-i18n="generate">GENERATE</span>
-        </button>
-      </div>
+      <div class="sb-team blue" style="text-align:right;">Blue Team 🔵</div>
     </div>
 
-    <!-- Player Role Cards -->
-    <div id="role-cards">
-      <!-- Dynamically rendered -->
+    <!-- Pitch canvas -->
+    <div class="pitch-wrap">
+      <canvas id="pitch" width="1200" height="800"></canvas>
     </div>
 
-  </main>
+    <!-- Coach AI strip below pitch -->
+    <div class="coach-strip">
+      <span class="coach-strip-label">✨ Tactical Coach AI</span>
+      <input type="text" id="coach-in" placeholder="e.g. tiki-taka, park the bus, gegenpressing, total football…"/>
+      <button class="btn-gen" onclick="genPlan()">✦ Generate</button>
+    </div>
+
+  </div>
+
 </div>
 
-<!-- Toast -->
 <div id="toast"></div>
 
 <script>
-/* ═══════════════════════════════════════════════════════════════════
-   STATE
-═══════════════════════════════════════════════════════════════════ */
-const POSITIONS = ['Striker', 'Midfielder', 'Defender', 'Goalkeeper'];
-const DEFAULT_PROMPTS = {
-  Striker:    'First to every ball. No hesitation, no waiting. The moment you get a touch, hit the target — hard.',
-  Midfielder: 'Control the tempo. Win the ball back fast and distribute with precision.',
-  Defender:   'Stay between the ball and goal. Clear danger, support the keeper.',
-  Goalkeeper: 'Command your area. Catch everything in range, distribute quickly to launch attacks.',
-};
-const STYLE_TAGS = {
-  Striker:    ['🔥 Aggressive', '🎯 Sniper', '↔ Counter', '🤝 Team Player'],
-  Midfielder: ['⚡ Box-to-Box', '🎭 Creative', '🛡 Defensive Mid', '↔ Counter'],
-  Defender:   ['🧱 Rock Solid', '📐 Tactical', '🚀 Sweeper', '↔ Counter'],
-  Goalkeeper: ['🧤 Shot Stopper', '🦵 Sweeper-Keeper', '📢 Commander', '🎯 Distributor'],
+/* ═══════════════════════════════════════════════════
+   PITCH CANVAS
+═══════════════════════════════════════════════════ */
+const canvas = document.getElementById('pitch');
+const ctx    = canvas.getContext('2d');
+const W = 1200, H = 800, CY = 425;
+const TRAIL = [];
+const TRAIL_MAX = 16;
+
+let gameState = {
+  match_state:'Waiting', time_left:90,
+  score:{Red:0,Blue:0}, ball:{x:600,y:CY}, players:{}
 };
 
-let currentTeam = 'Red';
-let promptData = { Red: {}, Blue: {} };
-let selectedTags = { Red: {}, Blue: {} };
-let leaderboard = JSON.parse(localStorage.getItem('lb') || '[]');
-let strategies = JSON.parse(localStorage.getItem('strats') || '[]');
-let lastState = {};
+function drawPitch() {
+  // Grass
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,   '#174d17');
+  g.addColorStop(0.5, '#1b5e1b');
+  g.addColorStop(1,   '#174d17');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,W,H);
 
-// Init defaults
-POSITIONS.forEach(p => {
-  ['Red','Blue'].forEach(t => {
-    promptData[t][p] = DEFAULT_PROMPTS[p];
-    selectedTags[t][p] = [];
+  // Stripes
+  for (let i=0;i<8;i++){
+    ctx.fillStyle = i%2===0 ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.025)';
+    ctx.fillRect(i*(W/8),0,W/8,H);
+  }
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.82)';
+  ctx.lineWidth = 2;
+
+  // Boundary
+  ctx.strokeRect(3,3,W-6,H-6);
+
+  // Centre line
+  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
+
+  // Centre circle
+  ctx.beginPath(); ctx.arc(W/2,CY,80,0,Math.PI*2); ctx.stroke();
+
+  // Centre dot
+  ctx.fillStyle='rgba(255,255,255,0.82)';
+  ctx.beginPath(); ctx.arc(W/2,CY,5,0,Math.PI*2); ctx.fill();
+
+  // Penalty areas
+  ctx.strokeRect(0,CY-150,120,300);
+  ctx.strokeRect(W-120,CY-150,120,300);
+
+  // 6-yard boxes
+  ctx.strokeRect(0,CY-60,40,120);
+  ctx.strokeRect(W-40,CY-60,40,120);
+
+  // Penalty spots
+  ctx.beginPath(); ctx.arc(88,CY,4,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(W-88,CY,4,0,Math.PI*2); ctx.fill();
+
+  // Penalty arcs
+  ctx.beginPath(); ctx.arc(88,CY,70,-0.44*Math.PI,0.44*Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(W-88,CY,70,Math.PI*0.56,Math.PI*1.44); ctx.stroke();
+
+  // Corner arcs
+  [[0,0,0,Math.PI/2],[W,0,Math.PI/2,Math.PI],[0,H,-Math.PI/2,0],[W,H,Math.PI,1.5*Math.PI]].forEach(([x,y,s,e])=>{
+    ctx.beginPath(); ctx.arc(x,y,12,s,e); ctx.stroke();
   });
-});
 
-/* ═══════════════════════════════════════════════════════════════════
-   I18N
-═══════════════════════════════════════════════════════════════════ */
-const TRANSLATIONS = {
-  en: {},
-  es: {
-    'Football Soccer – LLM Driven': 'Fútbol – Impulsado por LLM',
-    'match_setup': 'Configuración del Partido',
-    'start_match': 'INICIAR PARTIDO',
-    'end_match': 'TERMINAR PARTIDO',
-    'reset_ball': 'RESETEAR BALÓN',
-    'reset_match': 'RESETEAR PARTIDO',
-    'coach_team': 'Entrena a tu equipo',
-    'coach_sub': 'Cuatro roles por lado. Prompt vacío = jugador inactivo.',
-    'tactical_coach_ai': 'ENTRENADOR TÁCTICO IA',
-    'coach_ai_desc': 'Dile al entrenador qué quieres — genera un plan de juego completo.',
-    'coach_placeholder': 'ej. tiki-taka, autobús, gegenpressing…',
-    'generate': 'GENERAR',
-    'waiting': 'ESPERANDO',
-    'playing': 'JUGANDO',
-    'remaining': 'restantes',
-    'team_red': 'ROJO',
-    'team_blue': 'AZUL',
-    'team_red_label': 'Equipo Rojo',
-    'team_blue_label': 'Equipo Azul',
-    'strategy_library': 'Biblioteca de Estrategias',
-    'tournament_leaderboard': 'Tabla de Clasificación',
-    'live_synced': 'Estrategias Sincronizadas',
-    'debug_console': 'Consola de Depuración',
-    'save': 'Guardar',
-    'no_strategies': 'Sin estrategias guardadas.',
-    'no_matches': 'Sin partidos registrados.',
-    'no_synced': 'Sin estrategias sincronizadas.',
-    'save_strategy_label': 'Guardar prompts actuales como estrategia',
-  },
-  fr: {
-    'match_setup': 'Configuration du Match',
-    'start_match': 'DÉMARRER',
-    'end_match': 'TERMINER',
-    'reset_ball': 'RESET BALLE',
-    'reset_match': 'RESET MATCH',
-    'coach_team': 'Entraîne ton équipe',
-    'coach_sub': 'Quatre rôles par équipe. Prompt vide = joueur inactif.',
-    'tactical_coach_ai': 'ENTRAÎNEUR TACTIQUE IA',
-    'generate': 'GÉNÉRER',
-    'waiting': 'EN ATTENTE',
-    'playing': 'EN JEU',
-    'remaining': 'restantes',
-    'team_red_label': 'Équipe Rouge',
-    'team_blue_label': 'Équipe Bleue',
-  },
+  // Goals (y 325–525 = CY±100, x 0–30 and W-30–W)
+  ctx.fillStyle='rgba(255,215,0,0.18)';
+  ctx.strokeStyle='#ffd700'; ctx.lineWidth=2.5;
+  ctx.fillRect(0,CY-100,30,200); ctx.strokeRect(0,CY-100,30,200);
+  ctx.fillRect(W-30,CY-100,30,200); ctx.strokeRect(W-30,CY-100,30,200);
+
+  ctx.fillStyle='#ffd700'; ctx.font='bold 10px Segoe UI';
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('GOAL',15,CY); ctx.fillText('GOAL',W-15,CY);
+}
+
+function drawTrail() {
+  TRAIL.forEach((p,i)=>{
+    const a = (i/TRAIL.length)*0.3;
+    const r = 3+(i/TRAIL.length)*5;
+    ctx.beginPath(); ctx.arc(p.x,p.y,r,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${a})`; ctx.fill();
+  });
+}
+
+function drawBall(x,y) {
+  ctx.beginPath(); ctx.ellipse(x+3,y+5,8,4,0,0,Math.PI*2);
+  ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x,y,9,0,Math.PI*2);
+  ctx.fillStyle='#fff'; ctx.fill();
+  ctx.strokeStyle='#222'; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x,y,4,0,Math.PI*2);
+  ctx.fillStyle='#444'; ctx.fill();
+}
+
+function drawPlayers(players) {
+  Object.entries(players).forEach(([name,pos])=>{
+    const isRed = name.startsWith('Red');
+    const isGK  = name.includes('Goalkeeper');
+    const cx=pos.x, cy=pos.y;
+
+    // Shadow
+    ctx.beginPath(); ctx.ellipse(cx+2,cy+4,13,6,0,0,Math.PI*2);
+    ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.fill();
+
+    // Body gradient
+    const gr = ctx.createRadialGradient(cx-3,cy-3,2,cx,cy,14);
+    if(isRed){ gr.addColorStop(0,'#ff7070'); gr.addColorStop(1,'#c81e1e'); }
+    else      { gr.addColorStop(0,'#70a8ff'); gr.addColorStop(1,'#1e4fc8'); }
+    ctx.beginPath(); ctx.arc(cx,cy,14,0,Math.PI*2);
+    ctx.fillStyle=gr; ctx.fill();
+
+    // GK gold ring
+    if(isGK){
+      ctx.beginPath(); ctx.arc(cx,cy,14,0,Math.PI*2);
+      ctx.strokeStyle='#ffd700'; ctx.lineWidth=2.5; ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(cx,cy,14,0,Math.PI*2);
+    ctx.strokeStyle='rgba(0,0,0,0.5)'; ctx.lineWidth=1.5; ctx.stroke();
+
+    // Initial letter
+    const letter = name.replace(/^(Red|Blue)_/,'')[0] || '?';
+    ctx.fillStyle='#fff'; ctx.font='bold 12px Segoe UI';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(letter,cx,cy);
+
+    // Name tag
+    const label = name.replace(/^(Red|Blue)_/,'');
+    ctx.font='10px Segoe UI';
+    const tw = ctx.measureText(label).width+8;
+    ctx.fillStyle='rgba(0,0,0,0.6)';
+    ctx.beginPath(); ctx.roundRect(cx-tw/2,cy+17,tw,13,3); ctx.fill();
+    ctx.fillStyle = isRed ? '#fca5a5' : '#93c5fd';
+    ctx.textBaseline='top';
+    ctx.fillText(label,cx,cy+19);
+    ctx.textBaseline='alphabetic';
+  });
+}
+
+function renderFrame() {
+  ctx.clearRect(0,0,W,H);
+  drawPitch();
+  drawTrail();
+  drawBall(gameState.ball.x, gameState.ball.y);
+  drawPlayers(gameState.players);
+
+  if(gameState.match_state === 'Waiting'){
+    ctx.fillStyle='rgba(0,0,0,0.42)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#eab308';
+    ctx.font='bold 34px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('⏳  WAITING FOR KICK-OFF', W/2, H/2-18);
+    ctx.font='17px Segoe UI'; ctx.fillStyle='rgba(255,255,255,0.55)';
+    ctx.fillText('Click ▶ Start to begin', W/2, H/2+22);
+    ctx.textBaseline='alphabetic';
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   STATE POLLING
+═══════════════════════════════════════════════════ */
+async function poll() {
+  try {
+    const r = await fetch('/api/state');
+    if(!r.ok) return;
+    const d = await r.json();
+    gameState = d;
+
+    TRAIL.push({x:d.ball.x, y:d.ball.y});
+    if(TRAIL.length > TRAIL_MAX) TRAIL.shift();
+
+    // Sidebar live bar
+    const red=d.score.Red??0, blue=d.score.Blue??0;
+    document.getElementById('sb-score').textContent  = red+' – '+blue;
+    document.getElementById('sb-timer').textContent  = parseFloat(d.time_left).toFixed(1);
+    const playing = d.match_state==='Playing';
+    document.getElementById('sb-pill').textContent   = playing ? '🟢 PLAYING' : '⏳ WAITING';
+
+    // Main score bar
+    document.getElementById('main-score').textContent = red+' – '+blue;
+    document.getElementById('main-timer').textContent  = parseFloat(d.time_left).toFixed(1);
+    const mp = document.getElementById('main-pill');
+    mp.textContent = playing ? '🟢 PLAYING' : '⏳ WAITING';
+    mp.className   = 'sb-pill '+(playing?'playing':'waiting');
+
+    // Server dot
+    const dot = document.getElementById('srv-dot');
+    dot.style.background = 'var(--green)';
+    dot.style.boxShadow  = '0 0 6px var(--green)';
+
+    // Debug
+    document.getElementById('debug-con').textContent = JSON.stringify(d, null, 2);
+
+    // Leaderboard
+    recordMatch(d.score, d.match_state);
+  } catch(e) {
+    const dot = document.getElementById('srv-dot');
+    dot.style.background='#ef4444'; dot.style.boxShadow='0 0 6px #ef4444';
+  }
+}
+
+function loop() { renderFrame(); requestAnimationFrame(loop); }
+setInterval(poll, 100);
+poll();
+loop();
+
+/* ═══════════════════════════════════════════════════
+   MATCH CONTROLS
+═══════════════════════════════════════════════════ */
+async function ctrl(action) {
+  try {
+    const r = await fetch('/api/match/'+action, {method:'POST'});
+    const d = await r.json();
+    toast(r.ok ? '✓ '+d.message : '✗ '+(d.error||'Error'), r.ok ? 'ok' : 'err');
+    await poll();
+  } catch(e) { toast('✗ Connection error','err'); }
+}
+
+/* ═══════════════════════════════════════════════════
+   COACH AI
+═══════════════════════════════════════════════════ */
+const PLANS = {
+  'tiki-taka':     {Striker:'Short one-touch play, stay connected, pressure on loss.',Midfielder:'Keep possession with triangles, press immediately.',Defender:'Build short from back, don\'t lunge.',Goalkeeper:'Short distribution, start build-up calmly.'},
+  'park the bus':  {Striker:'Hold up ball, shield possession near corner flags.',Midfielder:'Sit deep, block passing lanes, hard tackles.',Defender:'Compact block, never step out, clear decisively.',Goalkeeper:'Command area, clear long and fast.'},
+  'gegenpressing': {Striker:'Press instantly on loss, force errors high.',Midfielder:'Sprint press, win second balls, fast transitions.',Defender:'High line, aggressive, cover with pace.',Goalkeeper:'Sweeper-keeper, rush off line.'},
+  'total football':{Striker:'Drop to create overloads, interchange freely.',Midfielder:'Roam all zones, cover any position.',Defender:'Join attacks, be comfortable on ball.',Goalkeeper:'Precise feet, start positional play.'},
+  'counter':       {Striker:'Burst behind on possession win.',Midfielder:'Win ball fast, vertical ball immediately.',Defender:'Stay deep, trigger quick vertical pass.',Goalkeeper:'Launch fast on saves.'},
 };
 
-let currentLang = 'en';
-function setLanguage(lang) {
-  currentLang = lang;
-  const t = TRANSLATIONS[lang] || {};
-  document.querySelectorAll('[data-i18n]').forEach(el => {
-    const key = el.getAttribute('data-i18n');
-    if (t[key]) el.textContent = t[key];
-    else if (TRANSLATIONS.en[key]) el.textContent = TRANSLATIONS.en[key];
-  });
-  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-    const key = el.getAttribute('data-i18n-placeholder');
-    if (t[key]) el.placeholder = t[key];
-  });
+function genPlan() {
+  if (!curTeam) { toast('Select a team first', 'err'); return; }
+  const raw = document.getElementById('coach-in').value.trim().toLowerCase();
+  let plan = null;
+  for(const [k,v] of Object.entries(PLANS)) if(raw.includes(k)) { plan=v; break; }
+  if(!plan) plan = {
+    Striker:   raw||'First to every ball, shoot on sight.',
+    Midfielder:raw||'Control the tempo, win second balls.',
+    Defender:  raw||'Stay compact, protect the goalkeeper.',
+    Goalkeeper:raw||'Command your area, distribute quickly.',
+  };
+  POSITIONS.forEach(p => { promptData[curTeam][p]=plan[p]||plan.Striker; });
+  renderRoles();
+  toast('✓ Plan generated for '+curTeam, 'ok');
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   TOGGLE CARDS
-═══════════════════════════════════════════════════════════════════ */
-function toggleCard(id) {
-  const body = document.getElementById('body-' + id);
-  const ch   = document.getElementById('chevron-' + id);
-  if (!body) return;
-  body.classList.toggle('hidden');
-  ch && ch.classList.toggle('open');
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   TEAM TABS
-═══════════════════════════════════════════════════════════════════ */
-function switchTeam(team) {
-  // Save current prompts before switching
-  saveCurrentPrompts();
-
-  currentTeam = team;
-  document.getElementById('tab-red').classList.toggle('active', team === 'Red');
-  document.getElementById('tab-blue').classList.toggle('active', team === 'Blue');
-  renderRoleCards();
-}
-
-function saveCurrentPrompts() {
-  POSITIONS.forEach(pos => {
-    const ta = document.getElementById('prompt-' + pos);
-    if (ta) promptData[currentTeam][pos] = ta.value;
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════
    ROLE CARDS
-═══════════════════════════════════════════════════════════════════ */
-function renderRoleCards() {
+═══════════════════════════════════════════════════ */
+const POSITIONS = ['Striker','Midfielder','Defender','Goalkeeper'];
+const DEF_PROMPTS = {
+  Striker:   'First to every ball. No hesitation. Hit the target — hard.',
+  Midfielder:'Control the tempo. Win ball fast, distribute with precision.',
+  Defender:  'Stay between ball and goal. Clear danger, support keeper.',
+  Goalkeeper:'Command area. Catch everything in range. Distribute quickly.',
+};
+const TAGS = {
+  Striker:   ['🔥 Aggressive','🎯 Sniper','↔ Counter','🤝 Team Player'],
+  Midfielder:['⚡ Box-to-Box','🎭 Creative','🛡 Defensive','↔ Counter'],
+  Defender:  ['🧱 Solid','📐 Tactical','🚀 Sweeper','↔ Counter'],
+  Goalkeeper:['🧤 Shot Stopper','🦵 Sweeper-Keeper','📢 Commander','🎯 Distributor'],
+};
+
+let curTeam  = null;   // null until user picks a team
+let promptData = {Red:{},Blue:{}};
+let selTags    = {Red:{},Blue:{}};
+POSITIONS.forEach(p=>{ ['Red','Blue'].forEach(t=>{ promptData[t][p]=DEF_PROMPTS[p]; selTags[t][p]=[]; }); });
+
+function switchTeam(t) {
+  saveCurPrompts();
+  curTeam = t;
+  document.getElementById('tab-r').classList.toggle('active', t==='Red');
+  document.getElementById('tab-b').classList.toggle('active', t==='Blue');
+  renderRoles();
+}
+
+function saveCurPrompts() {
+  if (!curTeam) return;
+  POSITIONS.forEach(p=>{ const el=document.getElementById('pr-'+p); if(el) promptData[curTeam][p]=el.value; });
+}
+
+function renderRoles() {
   const container = document.getElementById('role-cards');
-  const team = currentTeam;
-  const badgeClass = team === 'Red' ? 'badge-ch' : 'badge-de';
-  const badgeText  = team === 'Red' ? 'RED' : 'BLUE';
-
-  container.innerHTML = POSITIONS.map((pos, i) => {
-    const prompt = promptData[team][pos] || '';
-    const active = prompt.trim().length > 0;
-    const tags   = STYLE_TAGS[pos] || [];
-    const selTags = selectedTags[team][pos] || [];
-    const isOpen  = i === 0; // first card open by default
-
-    const tagsHtml = tags.map(tag => {
-      const isSel = selTags.includes(tag);
-      return `<span class="style-tag${isSel ? ' selected' : ''}" onclick="toggleTag('${pos}','${escHtml(tag)}')">${escHtml(tag)}</span>`;
-    }).join('');
-
-    return `
-    <div class="role-card" id="role-card-${pos}">
-      <div class="role-card-header" onclick="toggleRoleCard('${pos}')">
+  if (!curTeam) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.75rem;padding:10px 0;text-align:center;">Select a team above to configure players.</div>';
+    return;
+  }
+  const t=curTeam, bc=t==='Red'?'badge-r':'badge-b', bl=t==='Red'?'RED':'BLUE';
+  document.getElementById('role-cards').innerHTML = POSITIONS.map((p,i)=>{
+    const prompt=promptData[t][p]||'', active=prompt.trim().length>0;
+    const tags=TAGS[p]||[], st=selTags[t][p]||[];
+    const tagsHtml=tags.map(g=>`<span class="style-tag${st.includes(g)?' sel':''}" onclick="toggleTag('${p}','${esc(g)}')">${esc(g)}</span>`).join('');
+    return `<div class="role-card">
+      <div class="role-hdr" onclick="toggleRole('rb-${p}','rc-${p}')">
         <div class="role-left">
-          <span class="team-badge ${badgeClass}">${badgeText}</span>
-          <span class="role-title">${pos}</span>
+          <span class="badge ${bc}">${bl}</span>
+          <span class="role-title">${p}</span>
         </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span class="status-badge ${active ? 'status-active' : 'status-inactive'}">
-            ${active ? '🟢 ACTIVE' : '⚪ INACTIVE'}
-          </span>
-          <span class="chevron ${isOpen ? 'open' : ''}" id="chevron-role-${pos}">▼</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span class="status-badge ${active?'s-active':'s-inactive'}" id="sb-${p}">${active?'🟢 ACTIVE':'⚪ INACTIVE'}</span>
+          <span class="chevron${i===0?' open':''}" id="rc-${p}">▼</span>
         </div>
       </div>
-      <div class="role-card-body${isOpen ? '' : ' hidden'}" id="body-role-${pos}">
-        <div class="style-tags" id="tags-${pos}">${tagsHtml}</div>
-        <textarea class="prompt-area" id="prompt-${pos}" rows="3"
-          onchange="onPromptChange('${pos}')"
-          oninput="onPromptChange('${pos}')"
-          placeholder="Tactical instructions for ${pos}…">${escHtml(prompt)}</textarea>
-        <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-          <button class="btn btn-dark" style="font-size:0.7rem;padding:5px 10px;" onclick="clearPrompt('${pos}')">✕ Clear</button>
+      <div class="role-body${i===0?'':' hidden'}" id="rb-${p}">
+        <div class="style-tags" id="tg-${p}">${tagsHtml}</div>
+        <textarea class="prompt-area" id="pr-${p}" rows="3"
+          oninput="onPrChange('${p}')">${esc(prompt)}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:5px;">
+          <button class="btn btn-dark" style="font-size:0.65rem;padding:4px 8px;" onclick="clearP('${p}')">✕ Clear</button>
         </div>
       </div>
     </div>`;
   }).join('');
 }
 
-function toggleRoleCard(pos) {
-  const body = document.getElementById('body-role-' + pos);
-  const ch   = document.getElementById('chevron-role-' + pos);
-  body.classList.toggle('hidden');
-  ch && ch.classList.toggle('open');
+function toggleRole(bodyId, chevId) {
+  document.getElementById(bodyId)?.classList.toggle('hidden');
+  document.getElementById(chevId)?.classList.toggle('open');
 }
 
-function toggleTag(pos, tag) {
-  const arr = selectedTags[currentTeam][pos] || [];
-  const idx = arr.indexOf(tag);
-  if (idx >= 0) arr.splice(idx, 1);
-  else arr.push(tag);
-  selectedTags[currentTeam][pos] = arr;
-  // Re-render just the tag strip
-  const strip = document.getElementById('tags-' + pos);
-  if (!strip) return;
-  const tags = STYLE_TAGS[pos] || [];
-  strip.innerHTML = tags.map(t => {
-    const isSel = arr.includes(t);
-    return `<span class="style-tag${isSel ? ' selected' : ''}" onclick="toggleTag('${pos}','${escHtml(t)}')">${escHtml(t)}</span>`;
-  }).join('');
+function onPrChange(p) {
+  promptData[curTeam][p] = document.getElementById('pr-'+p).value;
+  const b = document.getElementById('sb-'+p);
+  if(b){ const a=promptData[curTeam][p].trim().length>0; b.className='status-badge '+(a?'s-active':'s-inactive'); b.textContent=a?'🟢 ACTIVE':'⚪ INACTIVE'; }
 }
 
-function onPromptChange(pos) {
-  promptData[currentTeam][pos] = document.getElementById('prompt-' + pos).value;
-  // Update status badge
-  const badge = document.querySelector(`#role-card-${pos} .status-badge`);
-  if (badge) {
-    const active = promptData[currentTeam][pos].trim().length > 0;
-    badge.className = `status-badge ${active ? 'status-active' : 'status-inactive'}`;
-    badge.textContent = active ? '🟢 ACTIVE' : '⚪ INACTIVE';
-  }
+function clearP(p) { const el=document.getElementById('pr-'+p); if(el){el.value=''; onPrChange(p);} }
+
+function toggleTag(p,tag) {
+  const arr=selTags[curTeam][p]||[], idx=arr.indexOf(tag);
+  idx>=0?arr.splice(idx,1):arr.push(tag); selTags[curTeam][p]=arr;
+  const strip=document.getElementById('tg-'+p); if(!strip) return;
+  strip.innerHTML=(TAGS[p]||[]).map(g=>`<span class="style-tag${arr.includes(g)?' sel':''}" onclick="toggleTag('${p}','${esc(g)}')">${esc(g)}</span>`).join('');
 }
 
-function clearPrompt(pos) {
-  const ta = document.getElementById('prompt-' + pos);
-  if (ta) { ta.value = ''; promptData[currentTeam][pos] = ''; onPromptChange(pos); }
-}
-
-function escHtml(str) {
-  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   MATCH CONTROLS
-═══════════════════════════════════════════════════════════════════ */
-async function matchControl(action) {
-  try {
-    const res = await fetch(`/api/match/${action}`, { method: 'POST' });
-    const data = await res.json();
-    if (res.ok) {
-      showToast('✓ ' + (data.message || action + ' done'), 'success');
-      refreshState();
-    } else {
-      showToast('✗ ' + (data.error || 'Failed'), 'error');
-    }
-  } catch(e) {
-    showToast('✗ Connection error', 'error');
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   TACTICAL COACH AI (local generation)
-═══════════════════════════════════════════════════════════════════ */
-const COACH_TEMPLATES = {
-  'tiki-taka':    { Striker: 'Make sharp runs, receive quick passes, one-touch play. Stay connected to midfield.', Midfielder: 'Short passes, triangles, keep possession. Press immediately on loss.', Defender: 'Build from the back with short passes. Cover space, do not lunge.', Goalkeeper: 'Distribute short to defenders. Start build-up play calmly.' },
-  'park the bus': { Striker: 'Hold the ball up, protect leads, do not over-commit forward.', Midfielder: 'Sit deep, block passing lanes, hard tackles allowed.', Defender: 'Stay compact, never step out, clear danger decisively.', Goalkeeper: 'Command penalty area, communicate loudly, clear long.' },
-  'gegenpressing': { Striker: 'Press the ball carrier instantly on loss. Force errors in their half.', Midfielder: 'Sprint press, win second balls, transition quickly.', Defender: 'Push high, aggressive line, cover behind with pace.', Goalkeeper: 'Sweeper-keeper, rush off line, start counter-attacks.' },
-  'total football': { Striker: 'Drop into midfield to create overloads. Interchangeable movement.', Midfielder: 'Roam freely, cover all zones, interchange with any position.', Defender: 'Join attacks, overlap, be comfortable with the ball.', Goalkeeper: 'Distribute precisely to feet to start positional play.' },
-  'counter':       { Striker: 'Burst forward the moment possession is won. Run in behind.', Midfielder: 'Win ball fast, release striker immediately with direct pass.', Defender: 'Stay deep, absorb pressure, trigger quick vertical ball.', Goalkeeper: 'Launch fast distribution on saves. Long ball to striker.' },
-  'high press':    { Striker: 'Press goalkeeper and defenders on every goal kick.', Midfielder: 'Chase every ball, double-press, force long balls.', Defender: 'High line, close gaps, confident dealing with balls in behind.', Goalkeeper: 'Sweeper-keeper, dominates 18-yard box, quick feet.' },
-};
-
-function generateCoachPlan() {
-  const rawPrompt = document.getElementById('coach-prompt-input').value.trim().toLowerCase();
-  let matched = null;
-  for (const key of Object.keys(COACH_TEMPLATES)) {
-    if (rawPrompt.includes(key)) { matched = key; break; }
-  }
-
-  const plan = matched
-    ? COACH_TEMPLATES[matched]
-    : {
-        Striker:    rawPrompt ? `${rawPrompt.slice(0,120)} — get on the ball and shoot.` : DEFAULT_PROMPTS.Striker,
-        Midfielder: rawPrompt ? `${rawPrompt.slice(0,120)} — control the midfield.`      : DEFAULT_PROMPTS.Midfielder,
-        Defender:   rawPrompt ? `${rawPrompt.slice(0,120)} — defensive discipline.`      : DEFAULT_PROMPTS.Defender,
-        Goalkeeper: rawPrompt ? `${rawPrompt.slice(0,120)} — keep the clean sheet.`      : DEFAULT_PROMPTS.Goalkeeper,
-      };
-
-  POSITIONS.forEach(pos => { promptData[currentTeam][pos] = plan[pos]; });
-  renderRoleCards();
-  showToast('✓ Game plan generated for ' + currentTeam, 'success');
-}
-
-/* ═══════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════
    STRATEGY LIBRARY
-═══════════════════════════════════════════════════════════════════ */
-function saveStrategy() {
-  const nameEl = document.getElementById('strategy-name-input');
-  const name = nameEl ? nameEl.value.trim() : '';
-  if (!name) { showToast('Enter a strategy name', 'error'); return; }
-  saveCurrentPrompts();
-  const strat = {
-    name,
-    team: currentTeam,
-    prompts: JSON.parse(JSON.stringify(promptData[currentTeam])),
-    tags: JSON.parse(JSON.stringify(selectedTags[currentTeam])),
-    saved: new Date().toISOString(),
-  };
-  strategies.push(strat);
-  localStorage.setItem('strats', JSON.stringify(strategies));
-  if (nameEl) nameEl.value = '';
-  renderStrategyList();
-  showToast('✓ Strategy saved: ' + name, 'success');
+═══════════════════════════════════════════════════ */
+let strats = JSON.parse(localStorage.getItem('strats')||'[]');
+
+function saveStrat() {
+  const name = document.getElementById('strat-name').value.trim();
+  if(!name){toast('Enter a name','err');return;}
+  saveCurPrompts();
+  strats.push({name,team:curTeam,prompts:JSON.parse(JSON.stringify(promptData[curTeam])),saved:new Date().toLocaleDateString()});
+  localStorage.setItem('strats',JSON.stringify(strats));
+  document.getElementById('strat-name').value='';
+  renderStrats(); toast('✓ Saved: '+name,'ok');
 }
 
-function loadStrategy(idx) {
-  const strat = strategies[idx];
-  if (!strat) return;
-  currentTeam = strat.team;
-  promptData[strat.team] = JSON.parse(JSON.stringify(strat.prompts));
-  selectedTags[strat.team] = JSON.parse(JSON.stringify(strat.tags));
-  document.getElementById('tab-red').classList.toggle('active', strat.team === 'Red');
-  document.getElementById('tab-blue').classList.toggle('active', strat.team === 'Blue');
-  renderRoleCards();
-  showToast('✓ Loaded: ' + strat.name, 'success');
+function loadStrat(i) {
+  const s=strats[i]; if(!s) return;
+  curTeam=s.team; promptData[s.team]=JSON.parse(JSON.stringify(s.prompts));
+  document.getElementById('tab-r').classList.toggle('active',s.team==='Red');
+  document.getElementById('tab-b').classList.toggle('active',s.team==='Blue');
+  renderRoles(); toast('✓ Loaded: '+s.name,'ok');
 }
 
-function deleteStrategy(idx) {
-  strategies.splice(idx, 1);
-  localStorage.setItem('strats', JSON.stringify(strategies));
-  renderStrategyList();
+function delStrat(i) { strats.splice(i,1); localStorage.setItem('strats',JSON.stringify(strats)); renderStrats(); }
+
+function renderStrats() {
+  document.getElementById('strat-count').textContent=strats.length;
+  const el=document.getElementById('strat-list');
+  el.innerHTML=strats.length===0
+    ?'<div class="strategy-item" style="color:var(--text-muted);font-style:italic;">No saved strategies.</div>'
+    :strats.map((s,i)=>`<div class="strategy-item" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>${esc(s.name)} <span style="color:var(--text-muted);font-size:.65rem;">${s.team}</span></span>
+        <span style="display:flex;gap:3px;">
+          <button class="btn btn-dark" style="padding:2px 7px;font-size:.65rem;" onclick="loadStrat(${i})">Load</button>
+          <button class="btn btn-red"  style="padding:2px 7px;font-size:.65rem;" onclick="delStrat(${i})">✕</button>
+        </span>
+      </div>`).join('');
 }
 
-function renderStrategyList() {
-  const el = document.getElementById('strategy-list');
-  const count = document.getElementById('strategy-count');
-  if (count) count.textContent = strategies.length;
-  if (!el) return;
-  if (strategies.length === 0) {
-    el.innerHTML = '<div class="strategy-item" style="color:var(--text-muted);font-style:italic;">No saved strategies yet.</div>';
-    return;
+/* ═══════════════════════════════════════════════════
+   LEADERBOARD
+═══════════════════════════════════════════════════ */
+let lb = JSON.parse(localStorage.getItem('lb')||'[]');
+let lastMatchState = 'Waiting';
+
+function recordMatch(score, state) {
+  if(lastMatchState==='Playing' && state==='Waiting'){
+    const {Red:r=0,Blue:b=0}=score;
+    if(r>0||b>0){ lb.push({r,b,d:new Date().toLocaleDateString()}); if(lb.length>20) lb.shift(); localStorage.setItem('lb',JSON.stringify(lb)); renderLb(); }
   }
-  el.innerHTML = strategies.map((s, i) => `
-    <div class="strategy-item" style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-      <div>
-        <span style="color:var(--text);font-weight:600;">${escHtml(s.name)}</span>
-        <span style="color:var(--text-dim);font-size:0.7rem;margin-left:6px;">${s.team}</span>
-      </div>
-      <div style="display:flex;gap:4px;">
-        <button class="btn btn-dark" style="padding:3px 8px;font-size:0.68rem;" onclick="loadStrategy(${i})">Load</button>
-        <button class="btn btn-red"  style="padding:3px 8px;font-size:0.68rem;" onclick="deleteStrategy(${i})">✕</button>
-      </div>
-    </div>`
-  ).join('');
+  lastMatchState=state;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   LEADERBOARD (persisted in localStorage)
-═══════════════════════════════════════════════════════════════════ */
-function addToLeaderboard(score, matchState) {
-  if (matchState !== 'Waiting') return; // only record completed matches
-  const red = score.Red || 0;
-  const blue = score.Blue || 0;
-  if (red === 0 && blue === 0) return;
-  // Check if this score was already recorded (avoid duplicates on state polls)
-  const last = leaderboard[leaderboard.length - 1];
-  if (last && last.red === red && last.blue === blue) return;
-  leaderboard.push({ red, blue, date: new Date().toLocaleDateString() });
-  if (leaderboard.length > 20) leaderboard.shift();
-  localStorage.setItem('lb', JSON.stringify(leaderboard));
-  renderLeaderboard();
+function renderLb() {
+  document.getElementById('lb-count').textContent=lb.length;
+  const el=document.getElementById('lb-list');
+  el.innerHTML=lb.length===0
+    ?'<div class="strategy-item" style="color:var(--text-muted);font-style:italic;">No matches yet.</div>'
+    :[...lb].reverse().map((m,i)=>`<div class="strategy-item" style="display:flex;justify-content:space-between;">
+        <span style="color:var(--text-dim);">#${lb.length-i}</span>
+        <span><span style="color:#f87171;">${m.r}</span> – <span style="color:#60a5fa;">${m.b}</span></span>
+        <span style="color:var(--text-muted);font-size:.65rem;">${m.d}</span>
+      </div>`).join('');
 }
 
-function renderLeaderboard() {
-  const el = document.getElementById('leaderboard-list');
-  const count = document.getElementById('lb-count');
-  if (count) count.textContent = leaderboard.length;
-  if (!el) return;
-  if (leaderboard.length === 0) {
-    el.innerHTML = '<div class="strategy-item" style="color:var(--text-muted);font-style:italic;">No matches recorded.</div>';
-    return;
-  }
-  el.innerHTML = [...leaderboard].reverse().map((m, i) => `
-    <div class="strategy-item" style="display:flex;justify-content:space-between;">
-      <span style="color:var(--text-dim);">#${leaderboard.length - i}</span>
-      <span>
-        <span style="color:#f87171;">${m.red}</span>
-        &ndash;
-        <span style="color:#60a5fa;">${m.blue}</span>
-      </span>
-      <span style="color:var(--text-muted);font-size:0.7rem;">${m.date}</span>
-    </div>`
-  ).join('');
+/* ═══════════════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════════════ */
+function toggleCard(id) {
+  document.getElementById('bd-'+id)?.classList.toggle('hidden');
+  document.getElementById('ch-'+id)?.classList.toggle('open');
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   LIVE STATE POLLING
-═══════════════════════════════════════════════════════════════════ */
-async function refreshState() {
-  try {
-    const res = await fetch('/api/state');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    lastState = data;
-    updateHUD(data);
-    updateDebugConsole(data);
-    document.getElementById('server-dot').style.background = 'var(--green)';
-    document.getElementById('server-dot').style.boxShadow  = '0 0 6px var(--green)';
-    // Record leaderboard entry when match transitions to Waiting
-    addToLeaderboard(data.score || {}, data.match_state);
-  } catch(e) {
-    document.getElementById('server-dot').style.background = '#ef4444';
-    document.getElementById('server-dot').style.boxShadow  = '0 0 6px #ef4444';
-  }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let _toastTimer;
+function toast(msg, type='ok') {
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className='show '+type;
+  clearTimeout(_toastTimer); _toastTimer=setTimeout(()=>el.className='',2800);
 }
 
-function updateHUD(data) {
-  const red  = (data.score || {}).Red  || 0;
-  const blue = (data.score || {}).Blue || 0;
-  document.getElementById('score-val').textContent  = red + ' – ' + blue;
-  document.getElementById('timer-val').textContent  = parseFloat(data.time_left || 0).toFixed(1);
-  const pill   = document.getElementById('match-pill');
-  const dot    = document.getElementById('pill-dot');
-  const txt    = document.getElementById('pill-text');
-  const playing = data.match_state === 'Playing';
-  pill.className = 'match-status-pill ' + (playing ? 'playing' : 'waiting');
-  dot.textContent = playing ? '🟢' : '⏳';
-  txt.textContent = playing ? 'PLAYING' : 'WAITING';
+const I18N = {
+  es:{ 'Football Soccer – LLM Driven':'Fútbol – Impulsado por LLM', 'Match Setup':'Configuración del Partido',
+       'Start':'INICIAR','End':'TERMINAR','Reset Ball':'RESET BALÓN','Reset Match':'RESET PARTIDO' },
+  fr:{ 'Match Setup':'Configuration du Match','Start':'DÉMARRER','End':'TERMINER' },
+};
+function setLang(l) {
+  const t=I18N[l]||{};
+  document.querySelectorAll('[data-i18n]').forEach(el=>{const k=el.getAttribute('data-i18n'); if(t[k]) el.textContent=t[k];});
 }
 
-function updateDebugConsole(data) {
-  const el = document.getElementById('debug-console');
-  if (el) el.textContent = JSON.stringify(data, null, 2);
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   TOAST
-═══════════════════════════════════════════════════════════════════ */
-let toastTimer;
-function showToast(msg, type='success') {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.className = 'show ' + type;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.className = ''; }, 2800);
-}
-
-/* ═══════════════════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════
    INIT
-═══════════════════════════════════════════════════════════════════ */
-renderRoleCards();
-renderStrategyList();
-renderLeaderboard();
-refreshState();
-setInterval(refreshState, 2000);
+═══════════════════════════════════════════════════ */
+renderRoles();   // shows "select a team" placeholder
+renderStrats();
+renderLb();
 </script>
 </body>
 </html>
