@@ -1,15 +1,13 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # The Soccer Pitch — Headless Docker Image
 #
-# Multi-architecture: supports linux/amd64 AND linux/arm64 (SnapDeploy, AWS
-# Graviton, Apple Silicon, etc.)
-#
-# python:3.11-slim is an official multi-arch image — Docker automatically
-# pulls the correct variant for the build platform.
+# No platform pin — the build platform resolves the correct architecture
+# automatically. python:3.11-slim is an official multi-arch image and
+# supports linux/amd64 AND linux/arm64 (SnapDeploy, AWS Graviton, etc.)
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1 : builder ────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM python:3.11-slim AS builder
+FROM python:3.11-slim AS builder
 
 WORKDIR /install
 
@@ -21,15 +19,11 @@ RUN pip install --no-cache-dir --prefix=/install/deps -r requirements.txt
 # ── Stage 2 : runtime ────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
-# Non-root user for security
 RUN groupadd -r pitch && useradd -r -g pitch -u 1001 pitch
 
 WORKDIR /app
 
-# Copy installed packages from builder
 COPY --from=builder /install/deps /usr/local
-
-# Copy application source
 COPY pitch/ ./pitch/
 
 RUN chown -R pitch:pitch /app
